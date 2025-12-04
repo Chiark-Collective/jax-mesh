@@ -37,8 +37,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/chiark/jax-mesh"
-Repository = "https://github.com/chiark/jax-mesh"
+Homepage = "https://github.com/Chiark-Collective/jax-mesh"
+Repository = "https://github.com/Chiark-Collective/jax-mesh"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/jaxmesh"]
