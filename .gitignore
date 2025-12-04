@@ -55,3 +55,10 @@ dmypy.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Secrets
+.pypi_token.env
+*.env
+
+# Lock files
+uv.lock
