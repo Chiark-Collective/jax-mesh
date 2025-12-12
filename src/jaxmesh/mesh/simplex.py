@@ -204,27 +204,36 @@ class TetMesh(SimplexMesh):
             raise ValueError("TetMesh requires simplices with four vertices")
         if self.embedding_dim != 3:
             raise ValueError("TetMesh vertices must live in R^3")
-        inv_list = []
-        gradients = []
-        volumes = []
-        for simplex in np.asarray(self.simplices, dtype=np.int32):
-            verts = self.vertices[simplex]
-            ones = jnp.ones((1, 4), dtype=jnp.float64)
-            affine = jnp.concatenate((verts.T, ones), axis=0)
-            use_cpu = CPU_LA_AVAILABLE and (jax.default_backend() == "gpu") and (affine.shape[0] <= 8)
-            if use_cpu:
-                inv_affine = cpu_inv_small(affine)
-            else:
-                inv_affine = jnp.linalg.inv(affine)
-            inv_list.append(inv_affine)
-            gradients.append(_tetra_gradient(inv_affine))
-            vol = _tetra_volume(verts)
-            if not math.isfinite(vol) or vol <= 0.0:
-                raise ValueError("Tetrahedron volume must be positive")
-            volumes.append(vol)
-        object.__setattr__(self, "_inverse_affine", jnp.stack(inv_list, axis=0))
-        object.__setattr__(self, "_gradients", jnp.stack(gradients, axis=0))
-        object.__setattr__(self, "_volumes", jnp.asarray(volumes, dtype=jnp.float64))
+
+        # Vectorized computation - gather all simplex vertices at once
+        all_verts = self.vertices[self.simplices]  # (n_tets, 4, 3)
+        n_tets = all_verts.shape[0]
+
+        # Build affine matrices in batch: (n_tets, 4, 4)
+        # Each affine = [[v0x, v1x, v2x, v3x], [v0y, v1y, v2y, v3y], [v0z, v1z, v2z, v3z], [1, 1, 1, 1]]
+        transposed = jnp.transpose(all_verts, (0, 2, 1))  # (n_tets, 3, 4)
+        ones = jnp.ones((n_tets, 1, 4), dtype=jnp.float64)
+        affines = jnp.concatenate([transposed, ones], axis=1)  # (n_tets, 4, 4)
+
+        # Batched inversion - single JAX call instead of n_tets individual calls
+        inv_affines = jnp.linalg.inv(affines)  # (n_tets, 4, 4)
+
+        # Compute gradients from inverses: extract first 3 rows, transpose last two dims
+        gradients = jnp.transpose(inv_affines[:, :3, :], (0, 2, 1))  # (n_tets, 4, 3)
+
+        # Compute volumes in batch using determinant of edge matrix
+        v0 = all_verts[:, 0, :]  # (n_tets, 3)
+        edges = all_verts[:, 1:, :] - v0[:, None, :]  # (n_tets, 3, 3)
+        dets = jnp.linalg.det(edges)  # (n_tets,)
+        volumes = jnp.abs(dets) / 6.0
+
+        # Validate volumes - check for degenerate tetrahedra
+        if jnp.any(volumes <= 0.0).item():
+            raise ValueError("Tetrahedron volume must be positive")
+
+        object.__setattr__(self, "_inverse_affine", inv_affines)
+        object.__setattr__(self, "_gradients", gradients)
+        object.__setattr__(self, "_volumes", volumes)
 
     @property
     def volumes(self) -> FloatArray:
