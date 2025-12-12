@@ -76,6 +76,13 @@ def _tetra_gradient(inverse_affine: FloatArray) -> FloatArray:
     return gradients.T
 
 
+def _locate_tolerance(bary: ArrayLike, atol: float) -> float:
+    """Select a tolerance that respects the input dtype."""
+    arr = np.asarray(bary)
+    eps = np.finfo(arr.dtype).eps if np.issubdtype(arr.dtype, np.floating) else 0.0
+    return max(atol, 10.0 * float(eps))
+
+
 @dataclass(frozen=True)
 class SimplexMesh:
     """Base mesh type used for simplex elements."""
@@ -184,8 +191,9 @@ class TriMesh(SimplexMesh):
     ) -> tuple[int, FloatArray] | None:
         bary_all = [self.barycentric_coordinates(i, point)[0] for i in range(self.num_simplices)]
         for idx, bary in enumerate(bary_all):
+            tol = _locate_tolerance(bary, atol)
             bary_np = np.asarray(bary, dtype=np.float64)
-            if np.all(bary_np >= -atol) and abs(float(bary_np.sum()) - 1.0) <= atol:
+            if np.all(bary_np >= -tol) and np.isclose(bary_np.sum(), 1.0, atol=tol, rtol=0.0):
                 return idx, bary
         return None
 
@@ -263,8 +271,9 @@ class TetMesh(SimplexMesh):
     ) -> tuple[int, FloatArray] | None:
         bary_all = [self.barycentric_coordinates(i, point)[0] for i in range(self.num_simplices)]
         for idx, bary in enumerate(bary_all):
+            tol = _locate_tolerance(bary, atol)
             bary_np = np.asarray(bary, dtype=np.float64)
-            if np.all(bary_np >= -atol) and abs(float(bary_np.sum()) - 1.0) <= atol:
+            if np.all(bary_np >= -tol) and np.isclose(bary_np.sum(), 1.0, atol=tol, rtol=0.0):
                 return idx, bary
         return None
 
