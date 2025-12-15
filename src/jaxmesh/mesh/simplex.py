@@ -226,8 +226,9 @@ class TetMesh(SimplexMesh):
         # Batched inversion - single JAX call instead of n_tets individual calls
         inv_affines = jnp.linalg.inv(affines)  # (n_tets, 4, 4)
 
-        # Compute gradients from inverses: extract first 3 rows, transpose last two dims
-        gradients = jnp.transpose(inv_affines[:, :3, :], (0, 2, 1))  # (n_tets, 4, 3)
+        # Compute gradients from inverses: extract first 3 columns, transpose last two dims
+        # Original per-tet: inv_affine[:, :3].T -> (4, 3).T -> (3, 4)
+        gradients = jnp.transpose(inv_affines[:, :, :3], (0, 2, 1))  # (n_tets, 3, 4)
 
         # Compute volumes in batch using determinant of edge matrix
         v0 = all_verts[:, 0, :]  # (n_tets, 3)
